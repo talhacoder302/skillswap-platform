@@ -3,7 +3,7 @@ const User = require(`${__models}/user`);
 const generateOtp = require(`${__utils}/generateOtp`);
 const { addMinutes } = require(`${__utils}/helper`);
 const OTP = require(`${__models}/otpModel`);
-const { generateAccessToken } = require(`${__utils}/jwt`);
+const { generateAccessToken, generateRefreshToken } = require(`${__utils}/jwt`);
 
 exports.register = async (req, res) => {
   try {
@@ -113,26 +113,44 @@ exports.login = async (req, res) => {
       return responseHandler.validationError(res, "Invalid email or password.");
     }
 
-    // 7. Generate Token
-    const token = generateAccessToken({
-      userId: user._id,
-      role: user.role,
-    });
+    // 7. Generate Tokens
+    const accessToken = generateAccessToken(user);
 
-    // 8. Update Login Time
+    const refreshToken = generateRefreshToken(user);
+
+    // 8. Save Refresh Token
+    user.refreshToken = refreshToken;
     user.lastLogin = new Date();
+
     await user.save();
 
-    // 9. Remove Password
+    // 9. Remove Password & Refresh Token
     const userObj = user.toObject();
-    delete userObj.password;
 
-    // 10. Response
+    delete userObj.password;
+    delete userObj.refreshToken;
+
+    // 10. Set Access Token Cookie
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 15 * 60 * 1000, // 15 Minutes
+    });
+
+    // 11. Set Refresh Token Cookie
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 Days
+    });
+
+    // 12. Response
     return responseHandler.success(
       res,
       {
         user: userObj,
-        accessToken: token,
       },
       "Login successful.",
     );
