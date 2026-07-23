@@ -143,11 +143,9 @@ exports.login = async (req, res) => {
 
 exports.getProfile = async (req, res) => {
   try {
-    return responseHandler.success(
-      res,
-      req.user,
-      "Profile fetched successfully.",
-    );
+    // const user = await User.findOne({ req.user._id })
+    console.log("Requested user: ", req);
+    return responseHandler.success(res, req.user, "Current User API");
   } catch (error) {
     return responseHandler.error(res, error);
   }
@@ -223,14 +221,6 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     return responseHandler.success(res, null, "Reset Password API");
-  } catch (error) {
-    return responseHandler.error(res, error);
-  }
-};
-
-exports.me = async (req, res) => {
-  try {
-    return responseHandler.success(res, null, "Current User API");
   } catch (error) {
     return responseHandler.error(res, error);
   }
