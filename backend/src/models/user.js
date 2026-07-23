@@ -37,26 +37,6 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    emailVerificationOTP: {
-      type: String,
-      default: null,
-    },
-
-    emailVerificationOTPExpiry: {
-      type: Date,
-      default: null,
-    },
-
-    resetPasswordOTP: {
-      type: String,
-      default: null,
-    },
-
-    resetPasswordOTPExpiry: {
-      type: Date,
-      default: null,
-    },
-
     profilePhoto: {
       type: String,
       default: "",
@@ -106,11 +86,6 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
-    lastLogin: {
-      type: Date,
-      default: null,
-    },
-
     isActive: {
       type: Boolean,
       default: true,
@@ -129,14 +104,12 @@ const userSchema = new mongoose.Schema(
 /**
  * Hash Password Before Saving
  */
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
-    return next();
+    return;
   }
 
   this.password = await bcrypt.hash(this.password, 10);
-
-  next();
 });
 
 /**
