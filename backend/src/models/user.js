@@ -37,39 +37,28 @@ const userSchema = new mongoose.Schema(
       default: false,
     },
 
-    profilePhoto: {
+    bio: {
       type: String,
+      trim: true,
       default: "",
     },
 
-    bio: {
+    profilePicture: {
       type: String,
       default: "",
     },
 
     location: {
       type: String,
+      trim: true,
       default: "",
     },
 
     availability: {
       type: String,
-      default: "",
+      enum: ["weekdays", "weekends", "both"],
+      default: "both",
     },
-
-    skillsOffered: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Skill",
-      },
-    ],
-
-    skillsWanted: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Skill",
-      },
-    ],
 
     averageRating: {
       type: Number,
