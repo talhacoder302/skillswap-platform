@@ -20,10 +20,10 @@ const userSkillSchema = new mongoose.Schema(
       required: true,
     },
 
-    level: {
+    proficiency: {
       type: String,
-      enum: ["Beginner", "Intermediate", "Expert"],
-      required: true,
+      enum: ["Beginner", "Intermediate", "Advanced", "Expert"],
+      default: "Beginner",
     },
 
     description: {
@@ -43,11 +43,7 @@ const userSkillSchema = new mongoose.Schema(
   },
 );
 
-// ✅ Performance Indexes
-userSkillSchema.index({ userId: 1 });
-userSkillSchema.index({ skillId: 1 });
-
-// ✅ Prevent Duplicate Skills
+// Prevent duplicate skill for same user and type
 userSkillSchema.index(
   {
     userId: 1,
@@ -58,5 +54,9 @@ userSkillSchema.index(
     unique: true,
   },
 );
+
+// Performance indexes
+userSkillSchema.index({ userId: 1 });
+userSkillSchema.index({ skillId: 1 });
 
 module.exports = mongoose.model("UserSkill", userSkillSchema);
