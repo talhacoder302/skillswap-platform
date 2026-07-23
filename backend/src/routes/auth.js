@@ -1,7 +1,11 @@
+const { protect } = require(`${__middelwares}/auth`);
+
 module.exports = (router, controller) => {
   router.post("/auth/register", controller.register);
 
   router.post("/auth/login", controller.login);
+
+  router.get("/me", protect, controller.getProfile);
 
   router.post("/auth/verify-email", controller.verifyEmail);
 

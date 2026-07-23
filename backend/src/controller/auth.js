@@ -3,6 +3,7 @@ const User = require(`${__models}/user`);
 const generateOtp = require(`${__utils}/generateOtp`);
 const { addMinutes } = require(`${__utils}/helper`);
 const OTP = require(`${__models}/otpModel`);
+const { generateAccessToken } = require(`${__utils}/jwt`);
 
 exports.register = async (req, res) => {
   try {
@@ -68,7 +69,85 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    return responseHandler.success(res, null, "Login API");
+    // 1. Read Request
+    const { email, password } = req.body;
+
+    // 2. Validate
+    if (!email || !password) {
+      return responseHandler.validationError(
+        res,
+        "Email and password are required.",
+      );
+    }
+
+    // 3. Find User
+    const user = await User.findOne({
+      email: email.toLowerCase(),
+      isDeleted: false,
+    }).select("+password");
+
+    if (!user) {
+      return responseHandler.validationError(res, "Invalid email or password.");
+    }
+
+    // 4. Check Verification
+    if (!user.isVerified) {
+      return responseHandler.validationError(
+        res,
+        "Please verify your email first.",
+      );
+    }
+
+    // 5. Check Active
+    if (!user.isActive) {
+      return responseHandler.unauthorized(
+        res,
+        "Your account has been deactivated.",
+      );
+    }
+
+    // 6. Compare Password
+    const isMatch = await user.comparePassword(password);
+
+    if (!isMatch) {
+      return responseHandler.validationError(res, "Invalid email or password.");
+    }
+
+    // 7. Generate Token
+    const token = generateAccessToken({
+      userId: user._id,
+      role: user.role,
+    });
+
+    // 8. Update Login Time
+    user.lastLogin = new Date();
+    await user.save();
+
+    // 9. Remove Password
+    const userObj = user.toObject();
+    delete userObj.password;
+
+    // 10. Response
+    return responseHandler.success(
+      res,
+      {
+        user: userObj,
+        accessToken: token,
+      },
+      "Login successful.",
+    );
+  } catch (error) {
+    return responseHandler.error(res, error);
+  }
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    return responseHandler.success(
+      res,
+      req.user,
+      "Profile fetched successfully.",
+    );
   } catch (error) {
     return responseHandler.error(res, error);
   }
