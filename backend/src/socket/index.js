@@ -4,7 +4,11 @@ const connectionHandler = require("./handlers/connection");
 const chatHandler = require("./handlers/chat");
 const presenceHandler = require("./handlers/presence");
 
-module.exports = (io) => {
+let ioInstance = null;
+
+const initializeSocket = (io) => {
+  ioInstance = io;
+
   io.use(authMiddleware);
 
   io.on("connection", (socket) => {
@@ -12,4 +16,17 @@ module.exports = (io) => {
     chatHandler(io, socket);
     presenceHandler(io, socket);
   });
+};
+
+const getIO = () => {
+  if (!ioInstance) {
+    throw new Error("Socket.io has not been initialized.");
+  }
+
+  return ioInstance;
+};
+
+module.exports = {
+  initializeSocket,
+  getIO,
 };

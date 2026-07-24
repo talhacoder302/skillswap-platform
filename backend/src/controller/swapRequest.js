@@ -8,6 +8,7 @@ const { findActiveSwapRequest, isRequester, isReceiver } = require(
 );
 const { createNotification } = require(`${__services}/notification`);
 const notificationTypes = require(`${__utils}/notification`);
+const { getIO } = require(`${__socket}`);
 
 const getSwapRequests = async (filter) => {
   return await SwapRequest.find(filter)
@@ -129,6 +130,28 @@ exports.sendSwapRequest = async (req, res) => {
       message: `${req.user.fullName} sent you a swap request.`,
     });
 
+    const io = getIO();
+
+    const populatedRequest = await SwapRequest.findById(swapRequest._id)
+      .populate(swapRequestPopulate)
+      .lean();
+
+    io.to(receiverSkill.userId.toString()).emit(
+      "swap:request:new",
+      populatedRequest,
+    );
+
+    io.to(receiverSkill.userId.toString()).emit("notification:new", {
+      type: notificationTypes.SWAP_REQUEST_SENT,
+      title: "New Swap Request",
+      message: `${req.user.fullName} sent you a swap request.`,
+      swapRequestId: swapRequest._id,
+    });
+
+    io.to(receiverSkill.userId.toString()).emit("dashboard:update", {
+      type: "swap_request_received",
+    });
+
     return responseHandler.created(
       res,
       swapRequest,
@@ -207,6 +230,37 @@ exports.acceptSwapRequest = async (req, res) => {
 
     await swapRequest.save();
 
+    await createNotification({
+      recipientId: swapRequest.requesterId,
+      senderId: req.user._id,
+      swapRequestId: swapRequest._id,
+      type: notificationTypes.SWAP_REQUEST_ACCEPTED,
+      title: "Swap Request Accepted",
+      message: `${req.user.fullName} accepted your swap request.`,
+    });
+
+    const io = getIO();
+
+    const populatedRequest = await SwapRequest.findById(swapRequest._id)
+      .populate(swapRequestPopulate)
+      .lean();
+
+    io.to(swapRequest.requesterId.toString()).emit(
+      "swap:request:accepted",
+      populatedRequest,
+    );
+
+    io.to(swapRequest.requesterId.toString()).emit("notification:new", {
+      type: notificationTypes.SWAP_REQUEST_ACCEPTED,
+      title: "Swap Request Accepted",
+      message: `${req.user.fullName} accepted your swap request.`,
+      swapRequestId: swapRequest._id,
+    });
+
+    io.to(swapRequest.requesterId.toString()).emit("dashboard:update", {
+      type: "swap_request_accepted",
+    });
+
     return responseHandler.success(
       res,
       swapRequest,
@@ -253,6 +307,37 @@ exports.rejectSwapRequest = async (req, res) => {
 
     await swapRequest.save();
 
+    await createNotification({
+      recipientId: swapRequest.requesterId,
+      senderId: req.user._id,
+      swapRequestId: swapRequest._id,
+      type: notificationTypes.SWAP_REQUEST_REJECTED,
+      title: "Swap Request Rejected",
+      message: `${req.user.fullName} rejected your swap request.`,
+    });
+
+    const io = getIO();
+
+    const populatedRequest = await SwapRequest.findById(swapRequest._id)
+      .populate(swapRequestPopulate)
+      .lean();
+
+    io.to(swapRequest.requesterId.toString()).emit(
+      "swap:request:rejected",
+      populatedRequest,
+    );
+
+    io.to(swapRequest.requesterId.toString()).emit("notification:new", {
+      type: notificationTypes.SWAP_REQUEST_REJECTED,
+      title: "Swap Request Rejected",
+      message: `${req.user.fullName} rejected your swap request.`,
+      swapRequestId: swapRequest._id,
+    });
+
+    io.to(swapRequest.requesterId.toString()).emit("dashboard:update", {
+      type: "swap_request_rejected",
+    });
+
     return responseHandler.success(
       res,
       swapRequest,
@@ -298,6 +383,16 @@ exports.cancelSwapRequest = async (req, res) => {
     swapRequest.status = "cancelled";
 
     await swapRequest.save();
+
+    const io = getIO();
+
+    io.to(swapRequest.receiverId.toString()).emit("swap:request:cancelled", {
+      requestId: swapRequest._id,
+    });
+
+    io.to(swapRequest.receiverId.toString()).emit("dashboard:update", {
+      type: "swap_request_cancelled",
+    });
 
     return responseHandler.success(
       res,
@@ -350,6 +445,30 @@ exports.completeSwapRequest = async (req, res) => {
     swapRequest.completedAt = new Date();
 
     await swapRequest.save();
+
+    const io = getIO();
+
+    const populatedRequest = await SwapRequest.findById(swapRequest._id)
+      .populate(swapRequestPopulate)
+      .lean();
+
+    io.to(swapRequest.requesterId.toString()).emit(
+      "swap:request:completed",
+      populatedRequest,
+    );
+
+    io.to(swapRequest.receiverId.toString()).emit(
+      "swap:request:completed",
+      populatedRequest,
+    );
+
+    io.to(swapRequest.requesterId.toString()).emit("dashboard:update", {
+      type: "swap_completed",
+    });
+
+    io.to(swapRequest.receiverId.toString()).emit("dashboard:update", {
+      type: "swap_completed",
+    });
 
     return responseHandler.success(
       res,

@@ -19,9 +19,8 @@ const startServer = async () => {
       },
     });
 
-    require(`${__socket}/index`)(io);
-
-    app.set("io", io);
+    const { initializeSocket } = require(`${__socket}`);
+    initializeSocket(io);
 
     server.listen(PORT, () => {
       console.log(`========================================`);

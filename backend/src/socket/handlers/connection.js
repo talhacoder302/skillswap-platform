@@ -12,6 +12,8 @@ module.exports = (io, socket) => {
 
   addUser(userId, socket.id);
 
+  socket.join(userId);
+
   console.log(`${socket.user.fullName} connected (${socket.id})`);
 
   io.emit("presence:online", {

@@ -153,3 +153,6 @@ public/error-logs/*
 # OS Files
 .DS_Store
 Thumbs.db
+
+socket-test-maaz.js
+socket-test-talha.js
