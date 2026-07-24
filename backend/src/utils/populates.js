@@ -44,12 +44,23 @@ const notificationPopulate = [
   },
 ];
 
-module.exports = {
-  swapRequestPopulate,
-  notificationPopulate,
-};
+const feedbackPopulate = [
+  {
+    path: "reviewerId",
+    select: "fullName email profilePicture",
+  },
+  {
+    path: "revieweeId",
+    select: "fullName email profilePicture",
+  },
+  {
+    path: "swapRequestId",
+    select: "status completedAt",
+  },
+];
 
 module.exports = {
   swapRequestPopulate,
   notificationPopulate,
+  feedbackPopulate,
 };
