@@ -28,4 +28,9 @@ module.exports = (router, controller) => {
     protect,
     controller.completeSwapRequest,
   );
+  router.get(
+    "/swap-requests/:requestId",
+    protect,
+    controller.getSwapRequestById,
+  );
 };

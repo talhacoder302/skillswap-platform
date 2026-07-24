@@ -3,6 +3,9 @@ const SwapRequest = require(`${__models}/swapRequest`);
 const UserSkill = require(`${__models}/userSkill`);
 const responseHandler = require(`${__utils}/responseHandler`);
 const { swapRequestPopulate } = require(`${__utils}/populates`);
+const { findActiveSwapRequest, isRequester, isReceiver } = require(
+  `${__services}/swapRequest`,
+);
 
 const getSwapRequests = async (filter) => {
   return await SwapRequest.find(filter)
@@ -167,10 +170,7 @@ exports.acceptSwapRequest = async (req, res) => {
       return responseHandler.validationError(res, "Invalid request id.");
     }
 
-    const swapRequest = await SwapRequest.findOne({
-      _id: requestId,
-      isActive: true,
-    });
+    const swapRequest = await findActiveSwapRequest(requestId);
 
     if (!swapRequest) {
       return responseHandler.notFound(res, "Swap request not found.");
@@ -224,7 +224,7 @@ exports.rejectSwapRequest = async (req, res) => {
     }
 
     // Only receiver can reject
-    if (swapRequest.receiverId.toString() !== req.user._id.toString()) {
+    if (!isReceiver(swapRequest, req.user._id)) {
       return responseHandler.forbidden(
         res,
         "You are not allowed to reject this request.",
@@ -270,7 +270,7 @@ exports.cancelSwapRequest = async (req, res) => {
     }
 
     // Only requester can cancel
-    if (swapRequest.requesterId.toString() !== req.user._id.toString()) {
+    if (!isRequester(swapRequest, req.user._id)) {
       return responseHandler.forbidden(
         res,
         "You are not allowed to cancel this request.",
@@ -319,8 +319,8 @@ exports.completeSwapRequest = async (req, res) => {
     const currentUserId = req.user._id.toString();
 
     if (
-      swapRequest.requesterId.toString() !== currentUserId &&
-      swapRequest.receiverId.toString() !== currentUserId
+      !isRequester(swapRequest, req.user._id) &&
+      !isReceiver(swapRequest, req.user._id)
     ) {
       return responseHandler.forbidden(
         res,
@@ -344,6 +344,47 @@ exports.completeSwapRequest = async (req, res) => {
       res,
       swapRequest,
       "Swap completed successfully.",
+    );
+  } catch (error) {
+    return responseHandler.error(res, error);
+  }
+};
+
+exports.getSwapRequestById = async (req, res) => {
+  try {
+    const { requestId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(requestId)) {
+      return responseHandler.validationError(res, "Invalid request id.");
+    }
+
+    const request = await SwapRequest.findOne({
+      _id: requestId,
+      isActive: true,
+    })
+      .populate(swapRequestPopulate)
+      .lean();
+
+    if (!request) {
+      return responseHandler.notFound(res, "Swap request not found.");
+    }
+
+    const currentUser = req.user._id.toString();
+
+    if (
+      request.requesterId._id.toString() !== currentUser &&
+      request.receiverId._id.toString() !== currentUser
+    ) {
+      return responseHandler.forbidden(
+        res,
+        "You are not allowed to view this request.",
+      );
+    }
+
+    return responseHandler.success(
+      res,
+      request,
+      "Swap request fetched successfully.",
     );
   } catch (error) {
     return responseHandler.error(res, error);
