@@ -33,6 +33,23 @@ const swapRequestPopulate = [
   },
 ];
 
+const notificationPopulate = [
+  {
+    path: "senderId",
+    select: "fullName email profilePicture",
+  },
+  {
+    path: "swapRequestId",
+    select: "status createdAt",
+  },
+];
+
 module.exports = {
   swapRequestPopulate,
+  notificationPopulate,
+};
+
+module.exports = {
+  swapRequestPopulate,
+  notificationPopulate,
 };

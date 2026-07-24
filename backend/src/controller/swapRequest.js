@@ -6,6 +6,8 @@ const { swapRequestPopulate } = require(`${__utils}/populates`);
 const { findActiveSwapRequest, isRequester, isReceiver } = require(
   `${__services}/swapRequest`,
 );
+const { createNotification } = require(`${__services}/notification`);
+const notificationTypes = require(`${__utils}/notification`);
 
 const getSwapRequests = async (filter) => {
   return await SwapRequest.find(filter)
@@ -116,6 +118,15 @@ exports.sendSwapRequest = async (req, res) => {
       receiverSkillId,
 
       message: message || "",
+    });
+
+    await createNotification({
+      recipientId: receiverSkill.userId,
+      senderId: req.user._id,
+      swapRequestId: swapRequest._id,
+      type: notificationTypes.SWAP_REQUEST_SENT,
+      title: "New Swap Request",
+      message: `${req.user.fullName} sent you a swap request.`,
     });
 
     return responseHandler.created(
