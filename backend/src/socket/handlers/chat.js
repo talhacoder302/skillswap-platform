@@ -40,7 +40,7 @@ module.exports = (io, socket) => {
    */
   socket.on("chat:join", async ({ conversationId }) => {
     try {
-      const { error, conversation } = await validateConversation(
+      const { error } = await validateConversation(
         conversationId,
         socket.user._id,
       );
@@ -106,6 +106,14 @@ module.exports = (io, socket) => {
         .lean();
 
       io.to(conversationId).emit("chat:receive", populatedMessage);
+
+      // 🔥 Realtime conversation update
+      io.to(conversationId).emit("conversation:update", {
+        conversationId: conversation._id,
+        lastMessage: populatedMessage.message,
+        lastMessageAt: populatedMessage.createdAt,
+        updatedAt: conversation.updatedAt,
+      });
     } catch (error) {
       console.error(error);
 
@@ -114,6 +122,163 @@ module.exports = (io, socket) => {
       });
     }
   });
+
+/**
+ * Edit Message
+ */
+socket.on("chat:edit", async ({ messageId, message }) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(messageId)) {
+      return socket.emit("chat:error", {
+        message: "Invalid message id.",
+      });
+    }
+
+    if (!message?.trim()) {
+      return socket.emit("chat:error", {
+        message: "Message is required.",
+      });
+    }
+
+    const existingMessage = await Message.findOne({
+      _id: messageId,
+      isDeleted: false,
+    });
+
+    if (!existingMessage) {
+      return socket.emit("chat:error", {
+        message: "Message not found.",
+      });
+    }
+
+    if (!existingMessage.senderId.equals(socket.user._id)) {
+      return socket.emit("chat:error", {
+        message: "You can edit only your own messages.",
+      });
+    }
+
+    existingMessage.message = message.trim();
+    existingMessage.isEdited = true;
+    existingMessage.editedAt = new Date();
+
+    await existingMessage.save();
+
+    const populatedMessage = await Message.findById(existingMessage._id)
+      .populate("senderId", "fullName email profilePicture")
+      .lean();
+
+    io.to(existingMessage.conversationId.toString()).emit(
+      "chat:edited",
+      populatedMessage,
+    );
+
+    // Update conversation if this is the latest message
+    const latestMessage = await Message.findOne({
+      conversationId: existingMessage.conversationId,
+      isDeleted: false,
+    }).sort({ createdAt: -1 });
+
+    if (latestMessage && latestMessage._id.equals(existingMessage._id)) {
+      await Conversation.findByIdAndUpdate(existingMessage.conversationId, {
+        lastMessage: latestMessage.message,
+        lastMessageAt: latestMessage.createdAt,
+      });
+
+      io.to(existingMessage.conversationId.toString()).emit(
+        "conversation:update",
+        {
+          conversationId: existingMessage.conversationId,
+          lastMessage: latestMessage.message,
+          lastMessageAt: latestMessage.createdAt,
+        },
+      );
+    }
+  } catch (error) {
+    console.error(error);
+
+    socket.emit("chat:error", {
+      message: "Unable to edit message.",
+    });
+  }
+});
+
+/**
+ * Delete Message
+ */
+socket.on("chat:delete", async ({ messageId }) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(messageId)) {
+      return socket.emit("chat:error", {
+        message: "Invalid message id.",
+      });
+    }
+
+    const existingMessage = await Message.findOne({
+      _id: messageId,
+      isDeleted: false,
+    });
+
+    if (!existingMessage) {
+      return socket.emit("chat:error", {
+        message: "Message not found.",
+      });
+    }
+
+    if (!existingMessage.senderId.equals(socket.user._id)) {
+      return socket.emit("chat:error", {
+        message: "You can delete only your own messages.",
+      });
+    }
+
+    existingMessage.isDeleted = true;
+    existingMessage.deletedAt = new Date();
+    existingMessage.message = "This message was deleted.";
+
+    await existingMessage.save();
+
+    // Notify room that message was deleted
+    io.to(existingMessage.conversationId.toString()).emit("chat:deleted", {
+      messageId: existingMessage._id,
+      conversationId: existingMessage.conversationId,
+      deletedAt: existingMessage.deletedAt,
+    });
+
+    // Find latest non-deleted message
+    const latestMessage = await Message.findOne({
+      conversationId: existingMessage.conversationId,
+      isDeleted: false,
+    }).sort({ createdAt: -1 });
+
+    let lastMessage = "";
+    let lastMessageAt = null;
+
+    if (latestMessage) {
+      lastMessage = latestMessage.message;
+      lastMessageAt = latestMessage.createdAt;
+    }
+
+    await Conversation.findByIdAndUpdate(existingMessage.conversationId, {
+      lastMessage,
+      lastMessageAt,
+    });
+
+    // Notify sidebar update
+    io.to(existingMessage.conversationId.toString()).emit(
+      "conversation:update",
+      {
+        conversationId: existingMessage.conversationId,
+        lastMessage,
+        lastMessageAt,
+      },
+    );
+  } catch (error) {
+    console.error(error);
+
+    socket.emit("chat:error", {
+      message: "Unable to delete message.",
+    });
+  }
+});
 
   /**
    * Read Messages
@@ -126,24 +291,22 @@ module.exports = (io, socket) => {
       );
 
       if (error) {
-        return socket.emit("chat:error", {
-          message: error,
-        });
+        return;
       }
+
+      const readAt = new Date();
 
       await Message.updateMany(
         {
           conversationId,
-          senderId: {
-            $ne: socket.user._id,
-          },
+          senderId: { $ne: socket.user._id },
           isRead: false,
           isDeleted: false,
         },
         {
           $set: {
             isRead: true,
-            readAt: new Date(),
+            readAt,
           },
         },
       );
@@ -151,57 +314,28 @@ module.exports = (io, socket) => {
       io.to(conversationId).emit("chat:read", {
         conversationId,
         readerId: socket.user._id,
-        readAt: new Date(),
+        readAt,
       });
     } catch (error) {
       console.error(error);
-
-      socket.emit("chat:error", {
-        message: "Unable to mark messages as read.",
-      });
     }
   });
 
   /**
-   * Typing Start
+   * Typing
    */
   socket.on("chat:typing", async ({ conversationId }) => {
-    try {
-      const { error } = await validateConversation(
-        conversationId,
-        socket.user._id,
-      );
-
-      if (error) return;
-
-      socket.to(conversationId).emit("chat:typing", {
-        conversationId,
-        userId: socket.user._id,
-        fullName: socket.user.fullName,
-      });
-    } catch (error) {
-      console.error(error);
-    }
+    socket.to(conversationId).emit("chat:typing", {
+      conversationId,
+      userId: socket.user._id,
+      fullName: socket.user.fullName,
+    });
   });
 
-  /**
-   * Typing Stop
-   */
   socket.on("chat:stop-typing", async ({ conversationId }) => {
-    try {
-      const { error } = await validateConversation(
-        conversationId,
-        socket.user._id,
-      );
-
-      if (error) return;
-
-      socket.to(conversationId).emit("chat:stop-typing", {
-        conversationId,
-        userId: socket.user._id,
-      });
-    } catch (error) {
-      console.error(error);
-    }
+    socket.to(conversationId).emit("chat:stop-typing", {
+      conversationId,
+      userId: socket.user._id,
+    });
   });
-};
+};;

@@ -20,12 +20,12 @@ const messageSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-      maxlength: 2000,
+      maxlength: 5000,
     },
 
     messageType: {
       type: String,
-      enum: ["text"],
+      enum: ["text", "image", "file", "system"],
       default: "text",
     },
 
@@ -33,7 +33,7 @@ const messageSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-    
+
     readAt: {
       type: Date,
       default: null,
@@ -44,17 +44,35 @@ const messageSchema = new mongoose.Schema(
       default: false,
     },
 
+    editedAt: {
+      type: Date,
+      default: null,
+    },
+
     isDeleted: {
       type: Boolean,
       default: false,
     },
+
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
-    versionKey: false,
   },
 );
 
-messageSchema.index({ conversationId: 1, createdAt: -1 });
+// Frequently used queries
+messageSchema.index({
+  conversationId: 1,
+  createdAt: -1,
+});
+
+messageSchema.index({
+  senderId: 1,
+  createdAt: -1,
+});
 
 module.exports = mongoose.model("Message", messageSchema);
