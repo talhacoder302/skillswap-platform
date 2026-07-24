@@ -12,3 +12,4 @@ global.__views = `${__base}/views`;
 global.__public = `${__root}/public`;
 global.__uploads = `${__root}/uploads`;
 global.__services = `${__base}/services`;
+global.__socket = `${process.cwd()}/src/socket`;
