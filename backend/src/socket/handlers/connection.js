@@ -1,4 +1,11 @@
-const { addUser, removeUser } = require("../utils/onlineUsers");
+const User = require(`${__models}/user`);
+
+const {
+  addUser,
+  removeUser,
+  getOnlineUsers,
+  isOnline,
+} = require("../utils/onlineUsers");
 
 module.exports = (io, socket) => {
   const userId = socket.user._id.toString();
@@ -7,9 +14,38 @@ module.exports = (io, socket) => {
 
   console.log(`${socket.user.fullName} connected (${socket.id})`);
 
-  socket.on("disconnect", () => {
-    removeUser(userId, socket.id);
+  io.emit("presence:online", {
+    userId,
+  });
 
-    console.log(`${socket.user.fullName} disconnected (${socket.id})`);
+  io.emit("presence:users", {
+    users: getOnlineUsers(),
+  });
+
+  socket.on("disconnect", async () => {
+    try {
+      removeUser(userId, socket.id);
+
+      if (!isOnline(userId)) {
+        const lastSeen = new Date();
+
+        await User.findByIdAndUpdate(userId, {
+          lastSeen,
+        });
+
+        io.emit("presence:offline", {
+          userId,
+          lastSeen,
+        });
+      }
+
+      io.emit("presence:users", {
+        users: getOnlineUsers(),
+      });
+
+      console.log(`${socket.user.fullName} disconnected (${socket.id})`);
+    } catch (error) {
+      console.error(error);
+    }
   });
 };

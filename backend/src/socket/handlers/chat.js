@@ -57,9 +57,7 @@ module.exports = (io, socket) => {
         conversationId,
       });
 
-      console.log(
-        `[Socket] ${socket.user.fullName} joined ${conversationId}`,
-      );
+      console.log(`[Socket] ${socket.user.fullName} joined ${conversationId}`);
     } catch (error) {
       console.error(error);
 
@@ -107,15 +105,59 @@ module.exports = (io, socket) => {
         .populate("senderId", "fullName email profilePicture")
         .lean();
 
-      io.to(conversationId).emit(
-        "chat:receive",
-        populatedMessage,
-      );
+      io.to(conversationId).emit("chat:receive", populatedMessage);
     } catch (error) {
       console.error(error);
 
       socket.emit("chat:error", {
         message: "Unable to send message.",
+      });
+    }
+  });
+
+  /**
+   * Read Messages
+   */
+  socket.on("chat:read", async ({ conversationId }) => {
+    try {
+      const { error } = await validateConversation(
+        conversationId,
+        socket.user._id,
+      );
+
+      if (error) {
+        return socket.emit("chat:error", {
+          message: error,
+        });
+      }
+
+      await Message.updateMany(
+        {
+          conversationId,
+          senderId: {
+            $ne: socket.user._id,
+          },
+          isRead: false,
+          isDeleted: false,
+        },
+        {
+          $set: {
+            isRead: true,
+            readAt: new Date(),
+          },
+        },
+      );
+
+      io.to(conversationId).emit("chat:read", {
+        conversationId,
+        readerId: socket.user._id,
+        readAt: new Date(),
+      });
+    } catch (error) {
+      console.error(error);
+
+      socket.emit("chat:error", {
+        message: "Unable to mark messages as read.",
       });
     }
   });

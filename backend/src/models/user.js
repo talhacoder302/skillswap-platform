@@ -80,6 +80,11 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
+    lastSeen: {
+      type: Date,
+      default: null,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
