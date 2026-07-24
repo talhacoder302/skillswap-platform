@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const UserSkill = require(`${__models}/userSkill`);
 const Skill = require(`${__models}/skill`);
 const responseHandler = require(`${__utils}/responseHandler`);
+const { getPagination } = require(`${__utils}/pagination`);
+const paginatedResponse = require(`${__utils}/paginatedResponse`);
 
 exports.addUserSkill = async (req, res) => {
   try {
@@ -67,36 +69,120 @@ exports.addUserSkill = async (req, res) => {
 
 exports.getMySkills = async (req, res) => {
   try {
-    const { type } = req.query;
+    const { page, limit, skip } = getPagination(req.query);
 
-    const filter = {
+    const {
+      type,
+      proficiency,
+      search,
+      categoryId,
+      sort = "-createdAt",
+    } = req.query;
+
+    const match = {
       userId: req.user._id,
       isActive: true,
     };
 
     if (type) {
-      if (!["offered", "wanted"].includes(type)) {
-        return responseHandler.validationError(res, "Invalid skill type.");
-      }
-
-      filter.type = type;
+      match.type = type;
     }
 
-    const skills = await UserSkill.find(filter)
-      .select("-__v")
-      .populate({
-        path: "skillId",
-        select: "name slug categoryId",
-        populate: {
-          path: "categoryId",
-          select: "name slug",
+    if (proficiency) {
+      match.proficiency = proficiency;
+    }
+
+    const skillMatch = {};
+
+    if (search) {
+      skillMatch.name = {
+        $regex: search,
+        $options: "i",
+      };
+    }
+
+    if (categoryId) {
+      skillMatch.categoryId = new mongoose.Types.ObjectId(categoryId);
+    }
+
+    const sortObj = {};
+
+    if (sort.startsWith("-")) {
+      sortObj[sort.substring(1)] = -1;
+    } else {
+      sortObj[sort] = 1;
+    }
+
+    const pipeline = [
+      {
+        $match: match,
+      },
+      {
+        $lookup: {
+          from: "skills",
+          localField: "skillId",
+          foreignField: "_id",
+          as: "skillId",
+          pipeline: [
+            {
+              $match: skillMatch,
+            },
+            {
+              $lookup: {
+                from: "skillcategories",
+                localField: "categoryId",
+                foreignField: "_id",
+                as: "categoryId",
+              },
+            },
+            {
+              $unwind: {
+                path: "$categoryId",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+          ],
         },
-      })
-      .sort({ createdAt: -1 });
+      },
+      {
+        $unwind: "$skillId",
+      },
+      {
+        $sort: sortObj,
+      },
+      {
+        $facet: {
+          data: [
+            {
+              $skip: skip,
+            },
+            {
+              $limit: limit,
+            },
+          ],
+          total: [
+            {
+              $count: "count",
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = await UserSkill.aggregate(pipeline);
+
+    const skills = result[0].data;
+
+    const total = result[0].total.length > 0 ? result[0].total[0].count : 0;
 
     return responseHandler.success(
       res,
-      skills,
+      paginatedResponse({
+        data: skills,
+        total,
+        page,
+        limit,
+      }),
       "User skills fetched successfully.",
     );
   } catch (error) {

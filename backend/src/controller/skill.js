@@ -3,6 +3,8 @@ const Skill = require(`${__models}/skill`);
 const SkillCategory = require(`${__models}/skillCategory`);
 const responseHandler = require(`${__utils}/responseHandler`);
 const slugify = require(`${__utils}/slugify`);
+const { getPagination } = require(`${__utils}/pagination`);
+const paginatedResponse = require(`${__utils}/paginatedResponse`);
 
 exports.createSkill = async (req, res) => {
   try {
@@ -60,21 +62,49 @@ exports.createSkill = async (req, res) => {
 
 exports.getSkills = async (req, res) => {
   try {
-    const { categoryId } = req.query;
+    const { page, limit, skip } = getPagination(req.query);
+
+    const { search, categoryId, sort = "-createdAt" } = req.query;
 
     const filter = {
       isActive: true,
     };
 
+    if (search) {
+      filter.name = {
+        $regex: search,
+        $options: "i",
+      };
+    }
+
     if (categoryId) {
       filter.categoryId = categoryId;
     }
 
-    const skills = await Skill.find(filter)
-      .populate("categoryId", "name slug")
-      .sort({ name: 1 });
+    const [skills, total] = await Promise.all([
+      Skill.find(filter)
+        .populate({
+          path: "categoryId",
+          select: "name slug",
+        })
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .lean(),
 
-    return responseHandler.success(res, skills, "Skills fetched successfully.");
+      Skill.countDocuments(filter),
+    ]);
+
+    return responseHandler.success(
+      res,
+      paginatedResponse({
+        data: skills,
+        total,
+        page,
+        limit,
+      }),
+      "Skills fetched successfully.",
+    );
   } catch (error) {
     return responseHandler.error(res, error);
   }

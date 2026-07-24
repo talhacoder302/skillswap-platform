@@ -2,6 +2,8 @@ const SkillCategory = require(`${__models}/skillCategory`);
 const responseHandler = require(`${__utils}/responseHandler`);
 const slugify = require(`${__utils}/slugify`);
 const mongoose = require("mongoose");
+const { getPagination } = require(`${__utils}/pagination`);
+const paginatedResponse = require(`${__utils}/paginatedResponse`);
 
 exports.createCategory = async (req, res) => {
   try {
@@ -48,15 +50,35 @@ exports.createCategory = async (req, res) => {
 
 exports.getCategories = async (req, res) => {
   try {
-    const categories = await SkillCategory.find({
+    const { page, limit, skip } = getPagination(req.query);
+
+    const { search, sort = "name" } = req.query;
+
+    const filter = {
       isActive: true,
-    })
-      .sort({ name: 1 })
-      .select("-__v");
+    };
+
+    if (search) {
+      filter.name = {
+        $regex: search,
+        $options: "i",
+      };
+    }
+
+    const [categories, total] = await Promise.all([
+      SkillCategory.find(filter).sort(sort).skip(skip).limit(limit).lean(),
+
+      SkillCategory.countDocuments(filter),
+    ]);
 
     return responseHandler.success(
       res,
-      categories,
+      paginatedResponse({
+        data: categories,
+        total,
+        page,
+        limit,
+      }),
       "Categories fetched successfully.",
     );
   } catch (error) {
