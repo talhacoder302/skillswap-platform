@@ -28,6 +28,13 @@ exports.unauthorized = (res, message = "Unauthorized") => {
   });
 };
 
+exports.forbidden = (res, message = "Forbidden") => {
+  return res.status(403).json({
+    success: false,
+    message,
+  });
+};
+
 exports.notFound = (res, message = "Not Found") => {
   return res.status(404).json({
     success: false,
