@@ -23,12 +23,19 @@ const otpSchema = new mongoose.Schema(
     createdAt: {
       type: Date,
       default: Date.now,
-      expires: 600, // 10 minutes
+    },
+
+    expiresAt: {
+      type: Date,
+      default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days expiry for OTP validation
     },
   },
   {
     versionKey: false,
   },
 );
+
+// TTL index: auto-delete documents 10 days after createdAt (cleanup)
+otpSchema.index({ createdAt: 1 }, { expireAfterSeconds: 864000 });
 
 module.exports = mongoose.model("OTP", otpSchema);
