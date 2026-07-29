@@ -4,6 +4,7 @@ const helmet = require("helmet");
 const compression = require("compression");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
+const path = require("path");
 
 const routes = require(`${__routes}/index`);
 
@@ -50,8 +51,11 @@ app.use(morgan("dev"));
 /**
  * Static Files
  */
+
 app.use("/public", express.static(__public));
 app.use("/uploads", express.static(__uploads));
+app.use("/profile-images", express.static(path.join(__public, "profile-images")));
+
 
 /**
  * Health Check

@@ -123,162 +123,162 @@ module.exports = (io, socket) => {
     }
   });
 
-/**
- * Edit Message
- */
-socket.on("chat:edit", async ({ messageId, message }) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(messageId)) {
-      return socket.emit("chat:error", {
-        message: "Invalid message id.",
+  /**
+   * Edit Message
+   */
+  socket.on("chat:edit", async ({ messageId, message }) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(messageId)) {
+        return socket.emit("chat:error", {
+          message: "Invalid message id.",
+        });
+      }
+
+      if (!message?.trim()) {
+        return socket.emit("chat:error", {
+          message: "Message is required.",
+        });
+      }
+
+      const existingMessage = await Message.findOne({
+        _id: messageId,
+        isDeleted: false,
+      });
+
+      if (!existingMessage) {
+        return socket.emit("chat:error", {
+          message: "Message not found.",
+        });
+      }
+
+      if (!existingMessage.senderId.equals(socket.user._id)) {
+        return socket.emit("chat:error", {
+          message: "You can edit only your own messages.",
+        });
+      }
+
+      existingMessage.message = message.trim();
+      existingMessage.isEdited = true;
+      existingMessage.editedAt = new Date();
+
+      await existingMessage.save();
+
+      const populatedMessage = await Message.findById(existingMessage._id)
+        .populate("senderId", "fullName email profilePicture")
+        .lean();
+
+      io.to(existingMessage.conversationId.toString()).emit(
+        "chat:edited",
+        populatedMessage,
+      );
+
+      // Update conversation if this is the latest message
+      const latestMessage = await Message.findOne({
+        conversationId: existingMessage.conversationId,
+        isDeleted: false,
+      }).sort({ createdAt: -1 });
+
+      if (latestMessage && latestMessage._id.equals(existingMessage._id)) {
+        await Conversation.findByIdAndUpdate(existingMessage.conversationId, {
+          lastMessage: latestMessage.message,
+          lastMessageAt: latestMessage.createdAt,
+        });
+
+        io.to(existingMessage.conversationId.toString()).emit(
+          "conversation:update",
+          {
+            conversationId: existingMessage.conversationId,
+            lastMessage: latestMessage.message,
+            lastMessageAt: latestMessage.createdAt,
+          },
+        );
+      }
+    } catch (error) {
+      console.error(error);
+
+      socket.emit("chat:error", {
+        message: "Unable to edit message.",
       });
     }
+  });
 
-    if (!message?.trim()) {
-      return socket.emit("chat:error", {
-        message: "Message is required.",
+  /**
+   * Delete Message
+   */
+  socket.on("chat:delete", async ({ messageId }) => {
+    try {
+      if (!mongoose.Types.ObjectId.isValid(messageId)) {
+        return socket.emit("chat:error", {
+          message: "Invalid message id.",
+        });
+      }
+
+      const existingMessage = await Message.findOne({
+        _id: messageId,
+        isDeleted: false,
       });
-    }
 
-    const existingMessage = await Message.findOne({
-      _id: messageId,
-      isDeleted: false,
-    });
+      if (!existingMessage) {
+        return socket.emit("chat:error", {
+          message: "Message not found.",
+        });
+      }
 
-    if (!existingMessage) {
-      return socket.emit("chat:error", {
-        message: "Message not found.",
+      if (!existingMessage.senderId.equals(socket.user._id)) {
+        return socket.emit("chat:error", {
+          message: "You can delete only your own messages.",
+        });
+      }
+
+      existingMessage.isDeleted = true;
+      existingMessage.deletedAt = new Date();
+      existingMessage.message = "This message was deleted.";
+
+      await existingMessage.save();
+
+      // Notify room that message was deleted
+      io.to(existingMessage.conversationId.toString()).emit("chat:deleted", {
+        messageId: existingMessage._id,
+        conversationId: existingMessage.conversationId,
+        deletedAt: existingMessage.deletedAt,
       });
-    }
 
-    if (!existingMessage.senderId.equals(socket.user._id)) {
-      return socket.emit("chat:error", {
-        message: "You can edit only your own messages.",
-      });
-    }
+      // Find latest non-deleted message
+      const latestMessage = await Message.findOne({
+        conversationId: existingMessage.conversationId,
+        isDeleted: false,
+      }).sort({ createdAt: -1 });
 
-    existingMessage.message = message.trim();
-    existingMessage.isEdited = true;
-    existingMessage.editedAt = new Date();
+      let lastMessage = "";
+      let lastMessageAt = null;
 
-    await existingMessage.save();
+      if (latestMessage) {
+        lastMessage = latestMessage.message;
+        lastMessageAt = latestMessage.createdAt;
+      }
 
-    const populatedMessage = await Message.findById(existingMessage._id)
-      .populate("senderId", "fullName email profilePicture")
-      .lean();
-
-    io.to(existingMessage.conversationId.toString()).emit(
-      "chat:edited",
-      populatedMessage,
-    );
-
-    // Update conversation if this is the latest message
-    const latestMessage = await Message.findOne({
-      conversationId: existingMessage.conversationId,
-      isDeleted: false,
-    }).sort({ createdAt: -1 });
-
-    if (latestMessage && latestMessage._id.equals(existingMessage._id)) {
       await Conversation.findByIdAndUpdate(existingMessage.conversationId, {
-        lastMessage: latestMessage.message,
-        lastMessageAt: latestMessage.createdAt,
+        lastMessage,
+        lastMessageAt,
       });
 
+      // Notify sidebar update
       io.to(existingMessage.conversationId.toString()).emit(
         "conversation:update",
         {
           conversationId: existingMessage.conversationId,
-          lastMessage: latestMessage.message,
-          lastMessageAt: latestMessage.createdAt,
+          lastMessage,
+          lastMessageAt,
         },
       );
-    }
-  } catch (error) {
-    console.error(error);
+    } catch (error) {
+      console.error(error);
 
-    socket.emit("chat:error", {
-      message: "Unable to edit message.",
-    });
-  }
-});
-
-/**
- * Delete Message
- */
-socket.on("chat:delete", async ({ messageId }) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(messageId)) {
-      return socket.emit("chat:error", {
-        message: "Invalid message id.",
+      socket.emit("chat:error", {
+        message: "Unable to delete message.",
       });
     }
-
-    const existingMessage = await Message.findOne({
-      _id: messageId,
-      isDeleted: false,
-    });
-
-    if (!existingMessage) {
-      return socket.emit("chat:error", {
-        message: "Message not found.",
-      });
-    }
-
-    if (!existingMessage.senderId.equals(socket.user._id)) {
-      return socket.emit("chat:error", {
-        message: "You can delete only your own messages.",
-      });
-    }
-
-    existingMessage.isDeleted = true;
-    existingMessage.deletedAt = new Date();
-    existingMessage.message = "This message was deleted.";
-
-    await existingMessage.save();
-
-    // Notify room that message was deleted
-    io.to(existingMessage.conversationId.toString()).emit("chat:deleted", {
-      messageId: existingMessage._id,
-      conversationId: existingMessage.conversationId,
-      deletedAt: existingMessage.deletedAt,
-    });
-
-    // Find latest non-deleted message
-    const latestMessage = await Message.findOne({
-      conversationId: existingMessage.conversationId,
-      isDeleted: false,
-    }).sort({ createdAt: -1 });
-
-    let lastMessage = "";
-    let lastMessageAt = null;
-
-    if (latestMessage) {
-      lastMessage = latestMessage.message;
-      lastMessageAt = latestMessage.createdAt;
-    }
-
-    await Conversation.findByIdAndUpdate(existingMessage.conversationId, {
-      lastMessage,
-      lastMessageAt,
-    });
-
-    // Notify sidebar update
-    io.to(existingMessage.conversationId.toString()).emit(
-      "conversation:update",
-      {
-        conversationId: existingMessage.conversationId,
-        lastMessage,
-        lastMessageAt,
-      },
-    );
-  } catch (error) {
-    console.error(error);
-
-    socket.emit("chat:error", {
-      message: "Unable to delete message.",
-    });
-  }
-});
+  });
 
   /**
    * Read Messages
@@ -338,4 +338,5 @@ socket.on("chat:delete", async ({ messageId }) => {
       userId: socket.user._id,
     });
   });
-};;
+};
+
